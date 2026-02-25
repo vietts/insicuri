@@ -1,7 +1,7 @@
-const CARD_W = 1200;
-const CARD_H = 675;
+const CARD_W = 1080;
+const CARD_H = 1920;
 const TILE_SIZE = 256;
-const ZOOM = 16;
+const ZOOM = 17;
 
 function latLngToTile(lat: number, lng: number) {
   const n = 2 ** ZOOM;
@@ -44,6 +44,25 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=18&addressdetails=1`,
+      { headers: { 'Accept-Language': 'it' } }
+    );
+    const data = await res.json();
+    const a = data.address;
+    if (!a) return '';
+    const road = a.road || a.pedestrian || a.cycleway || '';
+    const house = a.house_number || '';
+    const city = a.city || a.town || a.village || '';
+    const parts = [road, house, city].filter(Boolean);
+    return parts.join(', ');
+  } catch {
+    return '';
+  }
+}
+
 export interface ShareCardInput {
   title: string;
   category: string;
@@ -57,12 +76,15 @@ export async function generateShareCard({ title, category, lat, lng }: ShareCard
   canvas.height = CARD_H;
   const ctx = canvas.getContext('2d')!;
 
-  // --- Map tiles ---
+  // Fetch address in parallel with tiles
+  const addressPromise = reverseGeocode(lat, lng);
+
+  // --- Map tiles (top 60% of card) ---
+  const mapH = CARD_H * 0.6;
   const { xtile, ytile, xpx, ypx } = latLngToTile(lat, lng);
 
-  // Pin position on canvas (centered, slightly above middle)
   const pinX = CARD_W / 2;
-  const pinY = CARD_H * 0.38;
+  const pinY = mapH * 0.45;
 
   const offsetX = pinX - xpx;
   const offsetY = pinY - ypx;
@@ -70,7 +92,7 @@ export async function generateShareCard({ title, category, lat, lng }: ShareCard
   const tiles: Promise<{ img: HTMLImageElement; x: number; y: number }>[] = [];
 
   for (let tx = xtile - 3; tx <= xtile + 3; tx++) {
-    for (let ty = ytile - 2; ty <= ytile + 2; ty++) {
+    for (let ty = ytile - 5; ty <= ytile + 5; ty++) {
       const x = offsetX + (tx - xtile) * TILE_SIZE;
       const y = offsetY + (ty - ytile) * TILE_SIZE;
       if (x > CARD_W || y > CARD_H || x + TILE_SIZE < 0 || y + TILE_SIZE < 0) continue;
@@ -88,88 +110,129 @@ export async function generateShareCard({ title, category, lat, lng }: ShareCard
     const loaded = await Promise.all(tiles);
     loaded.forEach(({ img, x, y }) => ctx.drawImage(img, x, y, TILE_SIZE, TILE_SIZE));
   } catch {
-    // Fallback: gray background if tiles fail
     ctx.fillStyle = '#e5e7eb';
     ctx.fillRect(0, 0, CARD_W, CARD_H);
   }
 
-  // --- Dark gradient overlay ---
-  const grad = ctx.createLinearGradient(0, CARD_H * 0.25, 0, CARD_H);
+  // --- Dark gradient from map into bottom panel ---
+  const grad = ctx.createLinearGradient(0, mapH - 200, 0, mapH + 100);
   grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(0.45, 'rgba(0,0,0,0.55)');
-  grad.addColorStop(1, 'rgba(0,0,0,0.88)');
+  grad.addColorStop(0.5, 'rgba(17,17,17,0.85)');
+  grad.addColorStop(1, '#111111');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, CARD_W, CARD_H);
+  ctx.fillRect(0, mapH - 200, CARD_W, 300);
 
-  // Subtle top gradient for legibility
-  const topGrad = ctx.createLinearGradient(0, 0, 0, CARD_H * 0.15);
-  topGrad.addColorStop(0, 'rgba(0,0,0,0.3)');
+  // Solid dark bottom panel
+  ctx.fillStyle = '#111111';
+  ctx.fillRect(0, mapH + 100, CARD_W, CARD_H - mapH - 100);
+
+  // Subtle top gradient
+  const topGrad = ctx.createLinearGradient(0, 0, 0, 120);
+  topGrad.addColorStop(0, 'rgba(0,0,0,0.35)');
   topGrad.addColorStop(1, 'rgba(0,0,0,0)');
   ctx.fillStyle = topGrad;
-  ctx.fillRect(0, 0, CARD_W, CARD_H * 0.15);
+  ctx.fillRect(0, 0, CARD_W, 120);
 
   // --- Pin marker ---
+  // Shadow
+  ctx.beginPath();
+  ctx.ellipse(pinX, pinY + 28, 14, 5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fill();
+
   // Outer glow
   ctx.beginPath();
-  ctx.arc(pinX, pinY, 20, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(220, 38, 38, 0.3)';
+  ctx.arc(pinX, pinY, 26, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(220, 38, 38, 0.25)';
   ctx.fill();
 
   // White border
   ctx.beginPath();
-  ctx.arc(pinX, pinY, 14, 0, Math.PI * 2);
+  ctx.arc(pinX, pinY, 18, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
 
   // Red center
   ctx.beginPath();
-  ctx.arc(pinX, pinY, 10, 0, Math.PI * 2);
+  ctx.arc(pinX, pinY, 13, 0, Math.PI * 2);
   ctx.fillStyle = '#dc2626';
   ctx.fill();
 
-  // --- Red accent line ---
-  ctx.fillStyle = '#dc2626';
-  ctx.fillRect(40, CARD_H - 175, 4, 60);
+  // --- Text content area (bottom panel) ---
+  const textX = 60;
+  const maxTextW = CARD_W - 120;
+  let cursorY = mapH + 20;
 
-  // --- Title ---
-  ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 40px system-ui, -apple-system, sans-serif';
+  // Category pill
+  ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
+  const catW = ctx.measureText(category).width;
+  const pillPadX = 20;
+  const pillH = 44;
+
+  ctx.fillStyle = 'rgba(220, 38, 38, 0.15)';
+  const pillRadius = pillH / 2;
+  ctx.beginPath();
+  ctx.roundRect(textX, cursorY, catW + pillPadX * 2, pillH, pillRadius);
+  ctx.fill();
+
+  ctx.fillStyle = '#ef4444';
   ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(category, textX + pillPadX, cursorY + pillH / 2);
+
+  cursorY += pillH + 36;
+
+  // Title
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 52px system-ui, -apple-system, sans-serif';
   ctx.textBaseline = 'top';
-  const titleLines = wrapText(ctx, title, CARD_W - 120);
-  const titleStartY = CARD_H - 170;
-  titleLines.slice(0, 2).forEach((line, i) => {
-    ctx.fillText(line, 56, titleStartY + i * 48);
+  const titleLines = wrapText(ctx, title, maxTextW);
+  titleLines.slice(0, 3).forEach((line, i) => {
+    ctx.fillText(line, textX, cursorY + i * 64);
   });
 
-  // --- Category ---
-  ctx.font = '22px system-ui, -apple-system, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.75)';
-  const catY = titleStartY + titleLines.slice(0, 2).length * 48 + 8;
-  ctx.fillText(category, 56, catY);
+  cursorY += Math.min(titleLines.length, 3) * 64 + 28;
 
-  // --- Logo: "In" (red) + "Sicuri" (white) ---
-  ctx.textAlign = 'right';
+  // Address
+  const address = await addressPromise;
+  if (address) {
+    ctx.font = '30px system-ui, -apple-system, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    // Pin icon prefix
+    ctx.fillText('\uD83D\uDCCD ' + address, textX, cursorY);
+    cursorY += 44;
+  }
+
+  // --- Red accent line ---
+  cursorY += 20;
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(textX, cursorY, 60, 4);
+
+  // --- Bottom: Logo + URL ---
+  const bottomY = CARD_H - 80;
+
+  // Logo: "In" (red) + "Sicuri" (white)
+  ctx.font = 'bold 36px system-ui, -apple-system, sans-serif';
   ctx.textBaseline = 'bottom';
-
-  ctx.font = 'bold 28px system-ui, -apple-system, sans-serif';
-  const sicuriW = ctx.measureText('Sicuri').width;
-  ctx.fillStyle = '#ffffff';
-  ctx.fillText('Sicuri', CARD_W - 40, CARD_H - 42);
+  ctx.textAlign = 'left';
 
   ctx.fillStyle = '#dc2626';
-  ctx.fillText('In', CARD_W - 40 - sicuriW, CARD_H - 42);
+  const inW = ctx.measureText('In').width;
+  ctx.fillText('In', textX, bottomY);
 
-  // --- URL ---
-  ctx.font = '18px system-ui, -apple-system, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.5)';
-  ctx.fillText('insicuri.vercel.app', CARD_W - 40, CARD_H - 18);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('Sicuri', textX + inW, bottomY);
 
-  // --- OSM attribution (required) ---
-  ctx.textAlign = 'left';
-  ctx.font = '11px system-ui, sans-serif';
-  ctx.fillStyle = 'rgba(255,255,255,0.35)';
-  ctx.fillText('\u00A9 OpenStreetMap contributors', 10, CARD_H - 6);
+  // URL
+  ctx.font = '24px system-ui, -apple-system, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.fillText('insicuri.vercel.app', textX, bottomY + 32);
+
+  // OSM attribution
+  ctx.textAlign = 'right';
+  ctx.font = '16px system-ui, sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillText('\u00A9 OpenStreetMap contributors', CARD_W - 30, CARD_H - 20);
 
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob!), 'image/png');
