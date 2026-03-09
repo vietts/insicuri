@@ -18,10 +18,11 @@ const AuthContext = createContext<AuthContextType>({
   signOut: async () => {},
 });
 
+const supabase = createClient();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const supabase = createClient();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -35,7 +36,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return () => subscription.unsubscribe();
-  }, [supabase.auth]);
+  }, []);
 
   const signInWithEmail = useCallback(async (email: string, displayName: string) => {
     const { error } = await supabase.auth.signInWithOtp({
@@ -46,11 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
     });
     return { error: error?.message ?? null };
-  }, [supabase.auth]);
+  }, []);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
-  }, [supabase.auth]);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, loading, signInWithEmail, signOut }}>
