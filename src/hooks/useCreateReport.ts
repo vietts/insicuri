@@ -31,7 +31,7 @@ export function useCreateReport() {
     setError(null);
     const supabase = createClient();
 
-    const { data, error: rpcError } = await supabase.rpc('insicuri_create_spot_with_report', {
+    const { data, error: rpcError } = await supabase.rpc('create_spot_with_report', {
       p_lat: params.lat,
       p_lng: params.lng,
       p_title: params.title,
@@ -61,7 +61,7 @@ export function useCreateReport() {
       return false;
     }
 
-    const { error: insertError } = await supabase.from('insicuri_reports').insert({
+    const { error: insertError } = await supabase.from('reports').insert({
       spot_id: params.spot_id,
       user_id: user.id,
       category: params.category,

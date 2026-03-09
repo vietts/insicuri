@@ -12,7 +12,7 @@ export function useNearbySpots() {
   const findNearby = useCallback(async (lat: number, lng: number) => {
     setLoading(true);
     const supabase = createClient();
-    const { data, error } = await supabase.rpc('insicuri_find_nearby_spots', {
+    const { data, error } = await supabase.rpc('find_nearby_spots', {
       p_lat: lat,
       p_lng: lng,
       p_radius: NEARBY_RADIUS_M,

@@ -69,6 +69,7 @@ export default function AccediPage() {
               placeholder="Mario Rossi"
               required
               autoFocus
+              maxLength={100}
             />
 
             <Input
