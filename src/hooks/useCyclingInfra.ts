@@ -21,8 +21,12 @@ export function useCyclingInfra() {
   const abortRef = useRef<AbortController | null>(null);
   const cacheRef = useRef<Map<string, FeatureCollection<LineString>>>(new Map());
   const lastKeyRef = useRef<string>('');
+  const lastFetchRef = useRef<number>(0);
+  const throttleRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const fetchForBounds = useCallback(async (bounds: Bounds, zoom: number) => {
+    clearTimeout(throttleRef.current);
+
     if (zoom < CYCLING_MIN_ZOOM) {
       setGeojson(null);
       return;
@@ -30,13 +34,23 @@ export function useCyclingInfra() {
 
     const key = gridKey(bounds);
     if (key === lastKeyRef.current) return;
-    lastKeyRef.current = key;
 
     const cached = cacheRef.current.get(key);
     if (cached) {
+      lastKeyRef.current = key;
       setGeojson(cached);
       return;
     }
+
+    // Throttle: at least 2s between API calls
+    const now = Date.now();
+    const elapsed = now - lastFetchRef.current;
+    if (elapsed < 2000) {
+      throttleRef.current = setTimeout(() => fetchForBounds(bounds, zoom), 2000 - elapsed);
+      return;
+    }
+
+    lastKeyRef.current = key;
 
     // Abort previous request
     abortRef.current?.abort();
@@ -44,6 +58,7 @@ export function useCyclingInfra() {
     abortRef.current = controller;
 
     setLoading(true);
+    lastFetchRef.current = Date.now();
     try {
       // Expand bounds slightly to grid-aligned bounds for better caching
       const gridBounds: Bounds = {

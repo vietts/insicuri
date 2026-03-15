@@ -45,13 +45,31 @@ function classifyWay(tags: Record<string, string>): CyclingInfraType {
   return 'cycleway';
 }
 
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  retries = 2
+): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status === 429 && attempt < retries) {
+      // Exponential backoff: 2s, 4s
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      continue;
+    }
+    return res;
+  }
+  // Unreachable, but TS needs it
+  throw new Error('Overpass API: max retries exceeded');
+}
+
 export async function fetchCyclingInfra(
   bounds: Bounds,
   signal?: AbortSignal
 ): Promise<FeatureCollection<LineString>> {
   const query = buildCyclingQuery(bounds);
 
-  const res = await fetch(OVERPASS_API_URL, {
+  const res = await fetchWithRetry(OVERPASS_API_URL, {
     method: 'POST',
     body: `data=${encodeURIComponent(query)}`,
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
