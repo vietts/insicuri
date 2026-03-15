@@ -9,6 +9,7 @@ import { SpotMarker } from './SpotMarker';
 import { LocationButton } from './LocationButton';
 import { CyclingLayer } from './CyclingLayer';
 import { CyclingToggle } from './CyclingToggle';
+import { CyclingLegend } from './CyclingLegend';
 import type { Spot } from '@/types';
 import type { FeatureCollection, LineString } from 'geojson';
 
@@ -134,9 +135,12 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
         if (mapInstance) mapInstance.flyTo([pos.lat, pos.lng], 17, { duration: 0.8 });
       }} />
 
-      {/* Cycling toggle */}
+      {/* Cycling toggle + legend */}
       {onToggleCycling && (
-        <CyclingToggle active={!!showCycling} loading={cyclingLoading} onClick={onToggleCycling} />
+        <>
+          <CyclingToggle active={!!showCycling} loading={cyclingLoading} onClick={onToggleCycling} />
+          <CyclingLegend visible={!!showCycling} />
+        </>
       )}
     </div>
   );

@@ -5,22 +5,38 @@ import { fetchCyclingInfra, type Bounds } from '@/lib/overpass';
 import type { FeatureCollection, LineString } from 'geojson';
 
 const CYCLING_MIN_ZOOM = 13;
-const GRID_SIZE = 0.01; // ~1km grid cells
+// Padding factor: fetch 50% extra around viewport so small pan/zoom won't refetch
+const PADDING = 0.5;
+// Minimum seconds between API calls
+const THROTTLE_MS = 3000;
 
-function gridKey(bounds: Bounds): string {
-  const swLat = Math.floor(bounds.sw_lat / GRID_SIZE) * GRID_SIZE;
-  const swLng = Math.floor(bounds.sw_lng / GRID_SIZE) * GRID_SIZE;
-  const neLat = Math.ceil(bounds.ne_lat / GRID_SIZE) * GRID_SIZE;
-  const neLng = Math.ceil(bounds.ne_lng / GRID_SIZE) * GRID_SIZE;
-  return `${swLat.toFixed(2)},${swLng.toFixed(2)},${neLat.toFixed(2)},${neLng.toFixed(2)}`;
+function expandBounds(bounds: Bounds, factor: number): Bounds {
+  const latSpan = bounds.ne_lat - bounds.sw_lat;
+  const lngSpan = bounds.ne_lng - bounds.sw_lng;
+  const latPad = latSpan * factor;
+  const lngPad = lngSpan * factor;
+  return {
+    sw_lat: bounds.sw_lat - latPad,
+    sw_lng: bounds.sw_lng - lngPad,
+    ne_lat: bounds.ne_lat + latPad,
+    ne_lng: bounds.ne_lng + lngPad,
+  };
+}
+
+function containsBounds(outer: Bounds, inner: Bounds): boolean {
+  return (
+    outer.sw_lat <= inner.sw_lat &&
+    outer.sw_lng <= inner.sw_lng &&
+    outer.ne_lat >= inner.ne_lat &&
+    outer.ne_lng >= inner.ne_lng
+  );
 }
 
 export function useCyclingInfra() {
   const [geojson, setGeojson] = useState<FeatureCollection<LineString> | null>(null);
   const [loading, setLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const cacheRef = useRef<Map<string, FeatureCollection<LineString>>>(new Map());
-  const lastKeyRef = useRef<string>('');
+  const fetchedBoundsRef = useRef<Bounds | null>(null);
   const lastFetchRef = useRef<number>(0);
   const throttleRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -32,43 +48,32 @@ export function useCyclingInfra() {
       return;
     }
 
-    const key = gridKey(bounds);
-    if (key === lastKeyRef.current) return;
-
-    const cached = cacheRef.current.get(key);
-    if (cached) {
-      lastKeyRef.current = key;
-      setGeojson(cached);
+    // Skip if viewport is fully inside already-fetched area
+    if (fetchedBoundsRef.current && containsBounds(fetchedBoundsRef.current, bounds)) {
       return;
     }
 
-    // Throttle: at least 2s between API calls
+    // Throttle: at least THROTTLE_MS between API calls
     const now = Date.now();
     const elapsed = now - lastFetchRef.current;
-    if (elapsed < 2000) {
-      throttleRef.current = setTimeout(() => fetchForBounds(bounds, zoom), 2000 - elapsed);
+    if (elapsed < THROTTLE_MS) {
+      throttleRef.current = setTimeout(() => fetchForBounds(bounds, zoom), THROTTLE_MS - elapsed);
       return;
     }
-
-    lastKeyRef.current = key;
 
     // Abort previous request
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
+    // Fetch with padding so small movements don't trigger refetch
+    const paddedBounds = expandBounds(bounds, PADDING);
+
     setLoading(true);
     lastFetchRef.current = Date.now();
     try {
-      // Expand bounds slightly to grid-aligned bounds for better caching
-      const gridBounds: Bounds = {
-        sw_lat: Math.floor(bounds.sw_lat / GRID_SIZE) * GRID_SIZE,
-        sw_lng: Math.floor(bounds.sw_lng / GRID_SIZE) * GRID_SIZE,
-        ne_lat: Math.ceil(bounds.ne_lat / GRID_SIZE) * GRID_SIZE,
-        ne_lng: Math.ceil(bounds.ne_lng / GRID_SIZE) * GRID_SIZE,
-      };
-      const data = await fetchCyclingInfra(gridBounds, controller.signal);
-      cacheRef.current.set(key, data);
+      const data = await fetchCyclingInfra(paddedBounds, controller.signal);
+      fetchedBoundsRef.current = paddedBounds;
       setGeojson(data);
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
