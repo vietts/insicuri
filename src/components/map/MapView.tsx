@@ -7,7 +7,10 @@ import 'leaflet/dist/leaflet.css';
 import { MAP_CENTER, MAP_DEFAULT_ZOOM, MAP_MIN_ZOOM, MAP_MAX_ZOOM } from '@/lib/constants';
 import { SpotMarker } from './SpotMarker';
 import { LocationButton } from './LocationButton';
+import { CyclingLayer } from './CyclingLayer';
+import { CyclingToggle } from './CyclingToggle';
 import type { Spot } from '@/types';
+import type { FeatureCollection, LineString } from 'geojson';
 
 export interface MapViewHandle {
   getCenter: () => { lat: number; lng: number } | null;
@@ -19,6 +22,10 @@ interface MapViewProps {
   onBoundsChange: (bounds: { sw_lat: number; sw_lng: number; ne_lat: number; ne_lng: number }) => void;
   onSpotClick: (spot: Spot) => void;
   placingPin?: boolean;
+  showCycling?: boolean;
+  cyclingGeojson?: FeatureCollection<LineString> | null;
+  cyclingLoading?: boolean;
+  onToggleCycling?: () => void;
 }
 
 // Stores the map instance so the parent can read center
@@ -61,7 +68,7 @@ function MapEvents({
 }
 
 const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
-  { spots, onBoundsChange, onSpotClick, placingPin },
+  { spots, onBoundsChange, onSpotClick, placingPin, showCycling, cyclingGeojson, cyclingLoading, onToggleCycling },
   ref
 ) {
 
@@ -96,6 +103,8 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
 
         <MapEvents onBoundsChange={onBoundsChange} />
 
+        <CyclingLayer geojson={cyclingGeojson ?? null} visible={!!showCycling} />
+
         {spots.map((spot) => (
           <SpotMarker key={spot.id} spot={spot} onClick={() => onSpotClick(spot)} />
         ))}
@@ -124,6 +133,11 @@ const MapView = forwardRef<MapViewHandle, MapViewProps>(function MapView(
       <LocationButton onLocate={(pos) => {
         if (mapInstance) mapInstance.flyTo([pos.lat, pos.lng], 17, { duration: 0.8 });
       }} />
+
+      {/* Cycling toggle */}
+      {onToggleCycling && (
+        <CyclingToggle active={!!showCycling} loading={cyclingLoading} onClick={onToggleCycling} />
+      )}
     </div>
   );
 });

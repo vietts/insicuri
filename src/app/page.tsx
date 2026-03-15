@@ -1,8 +1,9 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSpots } from '@/hooks/useSpots';
+import { useCyclingInfra } from '@/hooks/useCyclingInfra';
 import { useNearbySpots } from '@/hooks/useNearbySpots';
 import { useAuth } from '@/hooks/useAuth';
 import { BottomSheet } from '@/components/ui/BottomSheet';
@@ -21,6 +22,7 @@ type Mode = 'browse' | 'preview' | 'place-pin' | 'nearby-choice' | 'report';
 export default function HomePage() {
   const { spots, fetchSpots } = useSpots();
   const { findNearby } = useNearbySpots();
+  const { geojson: cyclingGeojson, loading: cyclingLoading, fetchForBounds: fetchCycling } = useCyclingInfra();
   const { user } = useAuth();
   const { toast } = useToast();
   const router = useRouter();
@@ -30,13 +32,33 @@ export default function HomePage() {
   const [selectedSpot, setSelectedSpot] = useState<Spot | null>(null);
   const [pinPosition, setPinPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [nearbySpot, setNearbySpot] = useState<NearbySpot | null>(null);
+  const [showCycling, setShowCycling] = useState(false);
+  const boundsRef = useRef<{ sw_lat: number; sw_lng: number; ne_lat: number; ne_lng: number } | null>(null);
+  const zoomRef = useRef<number>(14);
 
   const handleBoundsChange = useCallback(
     (bounds: { sw_lat: number; sw_lng: number; ne_lat: number; ne_lng: number }) => {
+      boundsRef.current = bounds;
+      // Estimate zoom from bounds width
+      const lngSpan = bounds.ne_lng - bounds.sw_lng;
+      zoomRef.current = lngSpan > 0 ? Math.round(Math.log2(360 / lngSpan)) : 14;
       fetchSpots(bounds);
+      if (showCycling) {
+        fetchCycling(bounds, zoomRef.current);
+      }
     },
-    [fetchSpots]
+    [fetchSpots, showCycling, fetchCycling]
   );
+
+  const handleToggleCycling = useCallback(() => {
+    setShowCycling((prev) => {
+      const next = !prev;
+      if (next && boundsRef.current) {
+        fetchCycling(boundsRef.current, zoomRef.current);
+      }
+      return next;
+    });
+  }, [fetchCycling]);
 
   const handleSpotClick = useCallback((spot: Spot) => {
     if (mode === 'place-pin') return;
@@ -115,6 +137,10 @@ export default function HomePage() {
         onBoundsChange={handleBoundsChange}
         onSpotClick={handleSpotClick}
         placingPin={mode === 'place-pin'}
+        showCycling={showCycling}
+        cyclingGeojson={cyclingGeojson}
+        cyclingLoading={cyclingLoading}
+        onToggleCycling={handleToggleCycling}
       />
 
       {/* Header bar: logo + search */}
