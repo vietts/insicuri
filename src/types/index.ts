@@ -1,1 +1,1 @@
-export type { DangerCategory, SpotStatus, Profile, Spot, Report, NearbySpot } from './database';
+export type { DangerCategory, SpotStatus, Profile, Spot, Report, NearbySpot, Neighborhood, NeighborhoodScore } from './database';

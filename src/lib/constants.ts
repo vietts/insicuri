@@ -31,6 +31,35 @@ export function getDangerBg(score: number): string {
   return 'bg-green-500';
 }
 
+// Neighborhood score color thresholds (0-100)
+export function getScoreColor(score: number): string {
+  if (score >= 75) return '#22c55e'; // green-500
+  if (score >= 50) return '#eab308'; // yellow-500
+  if (score >= 25) return '#f97316'; // orange-500
+  return '#ef4444'; // red-500
+}
+
+export function getScoreLabel(score: number): string {
+  if (score >= 75) return 'Ottimo';
+  if (score >= 50) return 'Discreto';
+  if (score >= 25) return 'Insufficiente';
+  return 'Critico';
+}
+
+export function getScoreBg(score: number): string {
+  if (score >= 75) return 'bg-green-500';
+  if (score >= 50) return 'bg-yellow-500';
+  if (score >= 25) return 'bg-orange-500';
+  return 'bg-red-500';
+}
+
+export function getScoreTextColor(score: number): string {
+  if (score >= 75) return 'text-green-600';
+  if (score >= 50) return 'text-yellow-600';
+  if (score >= 25) return 'text-orange-600';
+  return 'text-red-600';
+}
+
 // Category metadata
 export const CATEGORIES: Record<DangerCategory, { label: string; icon: string }> = {
   buca_dissesto: { label: 'Buca / Dissesto', icon: '🕳️' },

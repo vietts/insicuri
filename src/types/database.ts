@@ -55,3 +55,34 @@ export interface NearbySpot {
   reports_count: number;
   distance: number;
 }
+
+export interface Neighborhood {
+  id: string;
+  name: string;
+  municipality: 'Udine' | 'Tavagnacco';
+  admin_level: number;
+  boundary_geojson: object;
+  centroid_lat: number;
+  centroid_lng: number;
+  area_km2: number | null;
+  updated_at: string;
+}
+
+export interface NeighborhoodScore {
+  id: string;
+  neighborhood_id: string;
+  computed_at: string;
+  cycleway_km: number;
+  lane_km: number;
+  shared_lane_km: number;
+  total_road_km: number;
+  coverage_ratio: number;
+  continuity_ratio: number;
+  corridor_score: number;
+  spots_count: number;
+  bonus_total: number;
+  malus_total: number;
+  score: number;
+  // Joined
+  insicuri_neighborhoods?: Neighborhood;
+}
